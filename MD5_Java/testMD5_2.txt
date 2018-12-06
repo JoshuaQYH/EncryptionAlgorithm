@@ -1,0 +1,291 @@
+/*****************************************
+ *  Function：实现MD5认证算法
+ *  Author：  Qiu Yihao
+ *  Date：    2018-12-04
+ *  Contact:  576261090 qq
+ *****************************************/
+
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.BufferedInputStream;
+import java.io.IOException;
+
+public class Main {
+    static byte[] M;                  /* 存放消息字节数组 */
+    static long[] T = new long[64];   /* 迭代运算的T表， 64个元素，每个元素有32bits，16进制8位 */
+    static long[] X = new long[16];  /*迭代中的次序表，内容为0~15，决定了迭代的过程中参数的调用顺序*/
+
+    /*四个寄存器A，B，C，D，构成128bits的迭代缓冲区*/
+    static long A = 0x67452301;
+    static long B = 0xEFCDAB89;
+    static long C = 0x98BADCFE;
+    static long D = 0x10325476;
+
+    /*四个临时寄存器*/
+    static long tmpA;
+    static long tmpB;
+    static long tmpC;
+    static long tmpD;
+
+    /* *
+    *  @ param  x  被移数
+    *  @ param  s  左移的位数
+    * */
+    public static long rotateLeft(long x, long s){
+         return (x << s)| (x >> (32 - s)) & 0xFFFFFFFL;
+    }
+    /////////////////////////////////////////////////////////////////////
+
+    /* 循环压缩过程中的F 压缩 迭代步骤*/
+    public static long F(long b, long c, long d){
+        return ( b & c ) | ( ~b & d );
+    }
+    /*
+    * @ param  a,b,c,d都为寄存器内容，k为X表索引，i为T表索引，s为左移位数
+    * */
+    public static long F_Func(long a, long b, long c, long d, long k, long i, long s){
+        return b + (rotateLeft((a + F(b, c, d) ), s))& 0xFFFFFFFL;
+    }
+    /////////////////////////////////////////////////////////////////////
+
+    /*循环压缩过程中的 G 压缩步骤*/
+    public static long G(long b, long c, long d){
+        return (b & d) | (c & ~d);
+    }
+    /*
+     * @ param  a,b,c,d都为寄存器内容，k为X表索引，i为T表索引，s为左移位数
+     * */
+    public static long G_Func(long a, long b, long c,long d, long k, long i, long s){
+        return b + (rotateLeft((a + G(b, c, d) ), s))& 0xFFFFFFFL;
+    }
+    ////////////////////////////////////////////////////////////////////////
+
+    /*循环压缩过程中的 H 压缩步骤*/
+    public static long H(long b, long c, long d){
+        return b ^ c ^ d;
+    }
+    /*
+     * @ param  a,b,c,d 都为寄存器内容，k为X表索引，i为T表索引，s为左移位数
+     * */
+    public static long H_Func(long a, long b, long c,long d, long k, long i, long s){
+        return b + (rotateLeft((a + H(b, c, d) ), s))& 0xFFFFFFFL;
+    }
+    /////////////////////////////////////////////////////////////////////////
+
+    /*循环压缩过程中的 I 压缩步骤*/
+    public static long I(long b, long c, long d){
+        return c ^ (b | ~d);
+    }
+    /*
+     * @ param  a,b,c,d 都为寄存器内容，k为X表索引，i为T表索引，s为左移位数
+     * */
+    public static long I_Func(long a, long b, long c,long d, long k, long i, long s){
+        return b + (rotateLeft((a + I(b, c, d) ), s))& 0xFFFFFFFL;
+    }
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**/
+    public static long encode(long t){
+        return ((t >> 24) & 0xff) | ((t >> 16) & 0xff) << 8 | ((t >> 8) & 0xff) << 16 | (t & 0xff) << 24;
+    }
+
+    /*将long类型转化为字节数组*/
+    public static byte[] longToByteArray(long value) {
+        return new byte[] {
+                (byte) (value),
+                (byte) (value >> 8),
+                (byte) (value >> 16),
+                (byte) (value >> 24),
+                (byte) (value >> 32),
+                (byte) (value >> 40),
+                (byte) (value >> 48),
+                (byte) (value >> 56)
+        };
+    }
+
+    /*生成迭代的T表格*/
+    public static void create_T_Table(){
+        for(int i = 0;i < 64;i++){
+            T[i] = (long) (Math.floor(Math.abs(Math.sin(i+1)) * (long)Math.pow(2,32)));
+        }
+    }
+
+
+    public static void main(String[] args)throws IOException{
+        long length = 0;         // 原始消息的长度
+        int paddingLength = 0;   // 尾部填充长度
+
+
+        byte [] pad;    // 字节流面板
+
+        String inputString = args[0];       // 输入的文件名
+        File file = new File(inputString);  // 文件操作对象
+        length = file.length();             // 获取文件的字节长度
+
+        if(length % 64 < 56){
+            paddingLength = (int)(56 - length % 64); // 字节
+        }
+        else if(length % 64 == 56){
+            paddingLength = 64;   // 64 字节
+        }
+        else if(length % 64 > 56){
+            paddingLength = (int) (64 - (length % 64 - 56));
+        }
+
+        try{
+            FileInputStream fis = new FileInputStream(inputString);   // 读入文件流
+            BufferedInputStream bis = new BufferedInputStream(fis);   // 将文件流读入缓冲区
+            DataInputStream dis = new DataInputStream(bis);           // 将缓冲区数据写入数据流
+
+            M = new byte[(int) (length + paddingLength + 8)];     // 填充消息最终长度  满足于 length + padding + 8 = 0 mod 64  字节
+
+            // 将文件内容读入全部字节数组M中
+            for(int i = 0; i < length + paddingLength; i++){
+                if( i < length){
+                    M[i] = (byte)dis.read();
+                }
+                else if(i == length){
+                    M[i] = (byte)128;
+                }
+                else{
+                    M[i] = 0;
+                }
+            }
+
+            pad  = longToByteArray(length * 8 );
+
+            // 消息尾部附加K值得低8个字节， 64位
+            for(int i = 0; i < length + paddingLength; i++){
+               M[(int)(i + length + paddingLength)] = (byte) pad[i];
+            }
+            create_T_Table();  // 生成T表
+            // 该循环的作用是：对全部原始消息进行分块，每块大小为64个字节，共512位
+            for(int i = 0; i < (length + paddingLength + 8)/8; i++){
+                int j = 0;
+                int k = 0;
+                // 每次迭代需要更新X表
+                for(k = 0, j = 0;j<16;j++,k+=4){
+                    X[j] = ((int)M[i*64 + k] & 0xFF) | ((int)M[i*64+k+1] & 0xFF) << 8 | ((int)M[i*64+k+2] & 0xFF) << 16 | ((int)M[i*64+k+3] & 0xFF) << 24;
+                }
+                // 作为迭代过程中的临时缓冲区
+                tmpA = A;
+                tmpB = B;
+                tmpC = C;
+                tmpD = D;
+                // 进入 4 轮循环，每次循环16次迭代，一共64次迭代
+                for(j = 0; j < 64; j ++){
+                    int div16 = j / 16;  // div16 同时代表属于那一轮循环
+                    int k_index = 0;  // 用于标识X表下标
+                    int j_factor = 0; // 用于确定k值
+                    switch (div16){
+                        case 0:
+                            // 第一轮循环，16次迭代
+                            j_factor = j - 1;
+                            k_index = j_factor;
+                            // 分四个A、B、C、D 缓冲区处理
+                            if(j % 4 == 0)
+                            {
+                                A = F_Func(A,B,C,D,X[k_index],7,T[j]);
+                            }
+                            else if(j % 4 == 1)
+                            {
+                                D = F_Func(D,A,B,C,X[k_index],12,T[j]);
+                            }
+                            else if(j % 4 == 2)
+                            {
+                                C = F_Func(C,D,A,B,X[k_index],17,T[j]);
+                            }
+                            else if(j % 4 == 3)
+                            {
+                                B = F_Func(B,C,D,A,X[k_index],22,T[j]);
+                            }
+                            break;
+                        case 1:
+                            // 第二轮循环，16次迭代
+                            j_factor = j - 16 - 1;
+                            k_index = (5 * j_factor + 1)%16;
+                            // 分四个A、B、C、D 缓冲区处理
+                            if(j % 4 == 0)
+                            {
+                                A = G_Func(A,B,C,D,X[k_index],5,T[j]);
+                            }
+                            else if(j % 4 == 1)
+                            {
+                                D = G_Func(D,A,B,C,X[k_index],9,T[j]);
+                            }
+                            else if(j % 4 == 2)
+                            {
+                                C = G_Func(C,D,A,B,X[k_index],14,T[j]);
+                            }
+                            else if(j % 4 == 3)
+                            {
+                                B = G_Func(B,C,D,A,X[k_index],12,T[j]);
+                            }
+                            break;
+                        case 2:
+                            // 第三轮循环，16次迭代
+                            j_factor = j - 16 - 16 -1;
+                            k_index = (5 + 3 * j_factor)%16;
+                            // 分四个A、B、C、D 缓冲区处理
+                            if(j % 4 == 0)
+                            {
+                                A = H_Func(A,B,C,D,X[k_index],4,T[j]);
+                            }
+                            else if(j % 4 == 1)
+                            {
+                                D = H_Func(D,A,B,C,X[k_index],11,T[j]);
+                            }
+                            else if(j % 4 == 2)
+                            {
+                                C = H_Func(C,D,A,B,X[k_index],16,T[j]);
+                            }
+                            else if(j % 4 == 3)
+                            {
+                                B = H_Func(B,C,D,A,X[k_index],23,T[j]);
+                            }
+                            break;
+                        case 3:
+                            // 第四轮循环，16次迭代
+                            j_factor = j - 16 - 16 - 16 -1;
+                            k_index = (7* j_factor)%16;
+                            if(j % 4 == 0)
+                            {
+                                A = I_Func(A,B,C,D,X[k_index],6,T[j]);
+                            }
+                            else if(j % 4 == 1)
+                            {
+                                D = I_Func(D,A,B,C,X[k_index],10,T[j]);
+                            }
+                            else if(j % 4 == 2)
+                            {
+                                C = I_Func(C,D,A,B,X[k_index],15,T[j]);
+                            }
+                            else if(j % 4 == 3)
+                            {
+                                B = I_Func(B,C,D,A,X[k_index],21,T[j]);
+                            }
+                            break;
+                    }
+                }
+                A = (A + tmpA) & 0xFFFFFFFFL;
+                B = (B + tmpB) & 0xFFFFFFFFL;
+                C = (C + tmpC) & 0xFFFFFFFFL;
+                D = (D + tmpD) & 0xFFFFFFFFL;
+            }
+            A = encode(A);
+            B = encode(B);
+            C = encode(C);
+            D = encode(D);
+
+            System.out.format("%x%x%x%x\n",A,B,C,D);
+            fis.close();
+            bis.close();
+            dis.close();
+        }
+        catch(IOException e){
+            System.out.println("There is no such an file.");
+        }
+
+    }
+}
